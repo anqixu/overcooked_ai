@@ -1,4 +1,7 @@
 black
+detectron2
+imagesize
+json
 numpy
 pytest
 pyrefly

@@ -1,5 +1,5 @@
 import pytest
-from overcooked_ai.dataset_types import BBox, BBoxDetection, BoxMode
+from overcooked_ai.dataset_types import BBox, BBoxAnnotation, BoxMode
 
 
 def test_bbox_mid_xy():
@@ -33,7 +33,7 @@ def test_bbox_intersection():
     bbox2 = BBox(-1, -2, 3.4, 5)
     intersection = bbox1.intersection(bbox2)
     assert intersection.get_bbox_xyxy() == (-1, -2, 3.4, 5)
-    
+
     # No overlap
     bbox1 = BBox(0, 0, 1, 1)
     bbox2 = BBox(1, 1, 2, 2)
@@ -51,9 +51,9 @@ def test_bbox_contains():
     assert bbox.contains(1, -3.5) == False
 
 
-def test_bbox_detection_serialization_plain():
+def test_bbox_annotation_serialization_plain():
     bbox = BBox(0, 1.1, 2, 3.4)
-    detection = BBoxDetection(bbox=bbox, category_id=1)
+    detection = BBoxAnnotation(bbox=bbox, category_id=1)
 
     dict_data = detection.to_dict()
     assert dict_data == {
@@ -62,7 +62,7 @@ def test_bbox_detection_serialization_plain():
         "category_id": 1,
     }
 
-    new_detection = BBoxDetection.from_dict(dict_data)
+    new_detection = BBoxAnnotation.from_dict(dict_data)
     assert new_detection.bbox.get_bbox_xyxy() == detection.bbox.get_bbox_xyxy()
     assert new_detection.category_id == detection.category_id
     assert new_detection.grid_col_idx == detection.grid_col_idx == None
@@ -72,9 +72,9 @@ def test_bbox_detection_serialization_plain():
     assert new_detection.track_id == detection.track_id == None
 
 
-def test_bbox_detection_serialization_with_zero_optional_fields():
+def test_bbox_annotation_serialization_with_zero_optional_fields():
     bbox = BBox(0, 1.1, 2, 3.4)
-    detection = BBoxDetection(
+    detection = BBoxAnnotation(
         bbox=bbox,
         category_id=1,
         grid_col_idx=0,
@@ -94,7 +94,7 @@ def test_bbox_detection_serialization_with_zero_optional_fields():
         "track_id": 0,
     }
 
-    new_detection = BBoxDetection.from_dict(dict_data)
+    new_detection = BBoxAnnotation.from_dict(dict_data)
     assert new_detection.bbox.get_bbox_xyxy() == detection.bbox.get_bbox_xyxy()
     assert new_detection.category_id == detection.category_id
     assert new_detection.grid_col_idx == detection.grid_col_idx
@@ -104,9 +104,9 @@ def test_bbox_detection_serialization_with_zero_optional_fields():
     assert new_detection.track_id == detection.track_id
 
 
-def test_bbox_detection_serialization_with_optional_fields():
+def test_bbox_annotation_serialization_with_optional_fields():
     bbox = BBox(0, 1.1, 2, 3.4)
-    detection = BBoxDetection(
+    detection = BBoxAnnotation(
         bbox=bbox,
         category_id=1,
         grid_col_idx=2,
@@ -128,7 +128,7 @@ def test_bbox_detection_serialization_with_optional_fields():
         "track_id": 1,
     }
 
-    new_detection = BBoxDetection.from_dict(dict_data)
+    new_detection = BBoxAnnotation.from_dict(dict_data)
     assert new_detection.bbox.get_bbox_xyxy() == detection.bbox.get_bbox_xyxy()
     assert new_detection.category_id == detection.category_id
     assert new_detection.grid_col_idx == detection.grid_col_idx

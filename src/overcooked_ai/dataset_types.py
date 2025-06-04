@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import dataclasses
+
+import imagesize
+import json
+import numpy as np
 
 from detectron2.structures.boxes import BoxMode
 
@@ -29,10 +35,13 @@ class BBox:
         self.y_max_px = y_max_px
 
         if self.x_min_px >= self.x_max_px:
-            raise ValueError(f"x_min_px ({self.x_min_px}) must be less than x_max_px ({self.x_max_px})")
+            raise ValueError(
+                f"x_min_px ({self.x_min_px}) must be less than x_max_px ({self.x_max_px})"
+            )
         if self.y_min_px >= self.y_max_px:
-            raise ValueError(f"y_min_px ({self.y_min_px}) must be less than y_max_px ({self.y_max_px})")
-
+            raise ValueError(
+                f"y_min_px ({self.y_min_px}) must be less than y_max_px ({self.y_max_px})"
+            )
 
     def get_mid_xy(self) -> tuple[float, float]:
         """Return center (x, y) in pixel coordinates."""
@@ -72,7 +81,9 @@ class BBox:
         intersection_x_max = min(self.x_max_px, other.x_max_px)
         intersection_y_max = min(self.y_max_px, other.y_max_px)
         try:
-            return BBox(intersection_x_min, intersection_y_min, intersection_x_max, intersection_y_max)
+            return BBox(
+                intersection_x_min, intersection_y_min, intersection_x_max, intersection_y_max
+            )
         except ValueError as err:
             raise ValueError(f"Failed to compute intersection of {self} and {other}: {err}")
 
@@ -84,13 +95,15 @@ class BBox:
     def contains(self, x: float, y: float) -> bool:
         """Return whether a point is inside the bounding box."""
         return self.x_min_px <= x < self.x_max_px and self.y_min_px <= y < self.y_max_px
-    
+
     def __repr__(self) -> str:
         return f"BBox(XYXY=({self.x_min_px},{self.y_min_px})-({self.x_max_px},{self.y_max_px}))"
 
 
 @dataclasses.dataclass
-class BBoxDetection:
+class BBoxAnnotation:
+    """POD for bounding box and category ID, with optional fields for detection and Overcooked grid coordinates."""
+
     bbox: BBox
     category_id: int
 
@@ -108,7 +121,7 @@ class BBoxDetection:
     track_id: int | None = None
 
     @classmethod
-    def from_dict(cls, data_dict: dict) -> BBoxDetection:
+    def from_dict(cls, data_dict: dict) -> BBoxAnnotation:
         """Parse from structure adhering to detectron2's format."""
 
         assert data_dict["bbox_mode"] == int(
@@ -196,4 +209,150 @@ class BBoxDetection:
         if self.track_id is not None:
             fields["track_id"] = f"{self.track_id}"
         repr = ", ".join(f"{k}={v}" for k, v in fields.items())
-        return f"BBoxDetection[{repr}]"
+        return f"BBoxAnnotation[{repr}]"
+
+
+@dataclasses.dataclass
+class DetectionDatasetEntry:
+    """POD for a detectron2 dataset entry, corresponding to a single image with a list of detections."""
+
+    file_name: str
+    height: int
+    width: int
+    image_id: str
+    annotations: list[BBoxAnnotation] = dataclasses.field(default_factory=list)
+
+    # Non-detectron2 fields
+    H_grid_img_vector: list[float] | None = None
+
+    # TODO: add unit tests for DetectionDatasetEntry
+
+    @classmethod
+    def from_dict(cls, entry_dict: dict) -> DetectionDatasetEntry:
+        H_grid_img_vector = entry_dict.get("H_grid_img", None)
+        annotations = [
+            BBoxAnnotation.from_dict(annotation_dict)
+            for annotation_dict in entry_dict["annotations"]
+        ]
+
+        obj = cls(
+            file_name=str(entry_dict["file_name"]),
+            height=int(entry_dict["height"]),
+            width=int(entry_dict["width"]),
+            image_id=str(entry_dict["image_id"]),
+            annotations=annotations,
+            H_grid_img_vector=H_grid_img_vector,
+        )
+
+        return obj
+
+    @classmethod
+    def from_image_path(cls, image_path: Path, image_id: str | None = None) -> DetectionDatasetEntry:
+        if image_id is None:
+            image_id = image_path.stem
+        width_px, height_px = imagesize.get(image_path)
+        return cls(
+            file_name=str(image_path), height=int(height_px), width=int(width_px), image_id=image_id
+        )
+
+    def to_dict(self) -> dict:
+        entry_dict: dict = {
+            "file_name": self.file_name,
+            "height": self.height,
+            "width": self.width,
+            "image_id": self.image_id,
+        }
+        if self.H_grid_img_vector is not None:
+            entry_dict["H_grid_img"] = self.H_grid_img_vector
+        entry_dict["annotations"] = [anno.to_dict() for anno in self.annotations]
+        return entry_dict
+
+    def find_nearest_annotation_idx(self, target_anno: BBoxAnnotation) -> int | None:
+        """Find index of entry.annotations nearest to target."""
+
+        if target_anno is None:
+            return None
+        dist_idx_tuples = []
+        target_x_mid, target_y_mid = target_anno.bbox.get_mid_xy()
+        for anno_idx, anno in enumerate(self.annotations):
+            if anno.category_id != target_anno.category_id:
+                continue
+            x_mid, y_mid = anno.bbox.get_mid_xy()
+            dist_idx_tuples.append(
+                ((x_mid - target_x_mid) ** 2 + (y_mid - target_y_mid) ** 2, anno_idx)
+            )
+        dist_idx_tuples.sort()
+        if len(dist_idx_tuples) > 0:
+            return dist_idx_tuples[0][1]
+        else:
+            return None
+
+    # def extract_bboxes(self, target_category_id: int) -> tuple[np.ndarray, list[int]]:
+    #     bboxes = []
+    #     anno_idxs = []
+    #     for anno_idx, anno in enumerate(self.annotations):
+    #         if anno.category_id == target_category_id:
+    #             bboxes.append(anno.bbox.get_bbox_xyxy())
+    #             anno_idxs.append(anno_idx)
+    #     return np.array(bboxes), anno_idxs
+
+
+@dataclasses.dataclass
+class DetectionDataset:
+    """POD for a detectron2 dataset, corresponding to a directory of images with a JSON file listing the annotations."""
+
+    # TODO: add unit tests for DetectionDataset
+
+    dataset_path: Path = Path()
+    entries: list[DetectionDatasetEntry] = dataclasses.field(default_factory=list)
+    thing_classes: list[str] = dataclasses.field(default_factory=list)
+    tainted: bool = False
+
+    @classmethod
+    def load_from_json(cls, dataset_path: Path) -> DetectionDataset:
+        """
+        Following Detectron2's JSON format:
+        https://detectron2.readthedocs.io/en/latest/tutorials/datasets.html#standard-dataset-dicts
+        """
+
+        obj = cls()
+        obj.dataset_path = dataset_path
+        with open(dataset_path, "r") as fh:
+            dataset = json.load(fh)
+        obj.entries = [DetectionDatasetEntry.from_dict(entry) for entry in dataset["dataset_dict"]]
+        obj.thing_classes = dataset["metadata"]["thing_classes"]
+        return obj
+
+    @classmethod
+    def load_from_images_dir(cls, imgs_dir: Path, dataset_path: Path) -> DetectionDataset:
+        obj = cls()
+        obj.dataset_path = dataset_path
+
+        img_paths = []
+        for image_path in Path(imgs_dir).iterdir():
+            if image_path.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                img_paths.append(image_path)
+        img_paths.sort()
+
+        obj.entries = [DetectionDatasetEntry.from_image_path(path) for path in img_paths]
+        obj.tainted = True
+        return obj
+
+    def save_to_json(self, dest_path: Path | None = None) -> None:
+        if dest_path is not None:
+            self.dataset_path = dest_path
+
+        for entry in self.entries:
+            entry.annotations.sort(key=BBoxAnnotation.sort_key)
+
+        with open(self.dataset_path, "w") as fh:
+            json.dump(
+                {
+                    "metadata": {"thing_classes": self.thing_classes},
+                    "dataset_dict": [entry.to_dict() for entry in self.entries],
+                },
+                fh,
+                indent=2,
+            )
+
+        self.tainted = False

@@ -5,7 +5,7 @@ import enum
 import numpy as np
 
 from overcooked_ai.common_types import Point2D
-from overcooked_ai.dataset_types import BBoxDetection
+from overcooked_ai.dataset_types import BBoxAnnotation
 
 
 @enum.unique
@@ -172,12 +172,12 @@ class RoundState:
 
 @dataclasses.dataclass
 class BBoxDetections:
-    map_from_object_id_to_detections: dict[ObjectId, list[BBoxDetection]]
+    map_from_object_id_to_detections: dict[ObjectId, list[BBoxAnnotation]]
 
 
 @dataclasses.dataclass
 class Icon:
-    detection: BBoxDetection
+    detection: BBoxAnnotation
     object_id: ObjectId
 
 
