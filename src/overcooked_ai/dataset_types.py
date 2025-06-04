@@ -28,12 +28,11 @@ class BBox:
         self.x_max_px = x_max_px
         self.y_max_px = y_max_px
 
-        assert (
-            self.x_min_px < self.x_max_px
-        ), f"x_min_px ({self.x_min_px}) must be less than x_max_px ({self.x_max_px})"
-        assert (
-            self.y_min_px < self.y_max_px
-        ), f"y_min_px ({self.y_min_px}) must be less than y_max_px ({self.y_max_px})"
+        if self.x_min_px >= self.x_max_px:
+            raise ValueError(f"x_min_px ({self.x_min_px}) must be less than x_max_px ({self.x_max_px})")
+        if self.y_min_px >= self.y_max_px:
+            raise ValueError(f"y_min_px ({self.y_min_px}) must be less than y_max_px ({self.y_max_px})")
+
 
     def get_mid_xy(self) -> tuple[float, float]:
         """Return center (x, y) in pixel coordinates."""
@@ -72,21 +71,22 @@ class BBox:
         intersection_y_min = max(self.y_min_px, other.y_min_px)
         intersection_x_max = min(self.x_max_px, other.x_max_px)
         intersection_y_max = min(self.y_max_px, other.y_max_px)
-        return BBox(intersection_x_min, intersection_y_min, intersection_x_max, intersection_y_max)
-
-    def get_area_intersection(self, other: BBox) -> float:
-        """Return area intersection of two bounding boxes in pixel coordinates."""
-        intersection = self.intersection(other)
-        return intersection.area
+        try:
+            return BBox(intersection_x_min, intersection_y_min, intersection_x_max, intersection_y_max)
+        except ValueError as err:
+            raise ValueError(f"Failed to compute intersection of {self} and {other}: {err}")
 
     def get_iou(self, other: BBox) -> float:
         """Return intersection over union (IoU) of two bounding boxes."""
-        intersection_area = self.get_area_intersection(other)
-        return intersection_area / float(self.area + other.area - intersection_area)
+        intersection = self.intersection(other)
+        return intersection.area / float(self.area + other.area - intersection.area)
 
     def contains(self, x: float, y: float) -> bool:
         """Return whether a point is inside the bounding box."""
         return self.x_min_px <= x < self.x_max_px and self.y_min_px <= y < self.y_max_px
+    
+    def __repr__(self) -> str:
+        return f"BBox(XYXY=({self.x_min_px},{self.y_min_px})-({self.x_max_px},{self.y_max_px}))"
 
 
 @dataclasses.dataclass
@@ -119,12 +119,12 @@ class BBoxDetection:
         category_id = int(data_dict["category_id"])
 
         grid_row_idx = data_dict.get("grid_row_idx", None)
-        grid_row_idx = int(grid_row_idx) if grid_row_idx else None
+        grid_row_idx = int(grid_row_idx) if grid_row_idx is not None else None
         grid_col_idx = data_dict.get("grid_col_idx", None)
-        grid_col_idx = int(grid_col_idx) if grid_col_idx else None
+        grid_col_idx = int(grid_col_idx) if grid_col_idx is not None else None
 
         score = data_dict.get("score", None)
-        score = float(score) if score else None
+        score = float(score) if score is not None else None
 
         class_probs = (
             [float(p) for p in data_dict.get("class_probs", [])]
@@ -133,7 +133,7 @@ class BBoxDetection:
         )
 
         track_id = data_dict.get("track_id", None)
-        track_id = int(track_id) if track_id else None
+        track_id = int(track_id) if track_id is not None else None
 
         return cls(
             BBox(x_min_px, y_min_px, x_max_px, y_max_px),
@@ -196,4 +196,4 @@ class BBoxDetection:
         if self.track_id is not None:
             fields["track_id"] = f"{self.track_id}"
         repr = ", ".join(f"{k}={v}" for k, v in fields.items())
-        return f"BBox[{repr}]"
+        return f"BBoxDetection[{repr}]"

@@ -46,8 +46,8 @@ def whiten_hxys(hxys: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
     @param hxys: (N x 3) homogeneous points of the form (x, y, w)
 
     @return hxys_whitened: (N x 3) whitened homogeneous points of the form (x, y, w)
-    @return hxys_mean: (2,) mean of whitened homogeneous points of the form (x, y, w)
-    @return hxys_gain: scalar gain of whitened homogeneous points of the form (x, y, w)
+    @return xys_mean: (2,) mean of whitened points of the form (x, y)
+    @return xy_rescale: scalar gain of whitened points of the form (x, y)
     """
 
     assert hxys.shape[0] > 0, "hxys must have at least one row"

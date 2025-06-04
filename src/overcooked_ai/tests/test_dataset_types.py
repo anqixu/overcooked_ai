@@ -22,10 +22,23 @@ def test_bbox_width_height():
 
 
 def test_bbox_intersection():
+    # Partial overlap
     bbox1 = BBox(0, 0, 2, 2)
     bbox2 = BBox(1, -1, 1.5, 3)
     intersection = bbox1.intersection(bbox2)
     assert intersection.get_bbox_xyxy() == (1, 0, 1.5, 2)
+
+    # Exact overlap
+    bbox1 = BBox(-1, -2, 3.4, 5)
+    bbox2 = BBox(-1, -2, 3.4, 5)
+    intersection = bbox1.intersection(bbox2)
+    assert intersection.get_bbox_xyxy() == (-1, -2, 3.4, 5)
+    
+    # No overlap
+    bbox1 = BBox(0, 0, 1, 1)
+    bbox2 = BBox(1, 1, 2, 2)
+    with pytest.raises(ValueError):
+        intersection = bbox1.intersection(bbox2)
 
 
 def test_bbox_contains():
@@ -57,6 +70,38 @@ def test_bbox_detection_serialization_plain():
     assert new_detection.score == detection.score == None
     assert new_detection.class_probs == detection.class_probs == None
     assert new_detection.track_id == detection.track_id == None
+
+
+def test_bbox_detection_serialization_with_zero_optional_fields():
+    bbox = BBox(0, 1.1, 2, 3.4)
+    detection = BBoxDetection(
+        bbox=bbox,
+        category_id=1,
+        grid_col_idx=0,
+        grid_row_idx=0,
+        score=0,
+        track_id=0,
+    )
+
+    dict_data = detection.to_dict()
+    assert dict_data == {
+        "bbox": [0, 1.1, 2, 3.4],
+        "bbox_mode": int(BoxMode.XYXY_ABS),
+        "category_id": 1,
+        "grid_col_idx": 0,
+        "grid_row_idx": 0,
+        "score": 0,
+        "track_id": 0,
+    }
+
+    new_detection = BBoxDetection.from_dict(dict_data)
+    assert new_detection.bbox.get_bbox_xyxy() == detection.bbox.get_bbox_xyxy()
+    assert new_detection.category_id == detection.category_id
+    assert new_detection.grid_col_idx == detection.grid_col_idx
+    assert new_detection.grid_row_idx == detection.grid_row_idx
+    assert new_detection.score == detection.score
+    assert new_detection.class_probs == detection.class_probs
+    assert new_detection.track_id == detection.track_id
 
 
 def test_bbox_detection_serialization_with_optional_fields():
