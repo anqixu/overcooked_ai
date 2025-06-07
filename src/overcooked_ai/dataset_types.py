@@ -180,6 +180,9 @@ class BBoxAnnotation:
             data_dict["track_id"] = self.track_id
         return data_dict
 
+    def get_xycat(self) -> tuple[float, float, int]:
+        return self.bbox.get_mid_xy() + (self.category_id,)
+
     def sort_key(self) -> tuple[float, int, int, float, float, float, float, int]:
         r = self.grid_row_idx if self.grid_row_idx is not None else 100000
         c = self.grid_col_idx if self.grid_col_idx is not None else 100000
@@ -247,7 +250,9 @@ class DetectionDatasetEntry:
         return obj
 
     @classmethod
-    def from_image_path(cls, image_path: Path, image_id: str | None = None) -> DetectionDatasetEntry:
+    def from_image_path(
+        cls, image_path: Path, image_id: str | None = None
+    ) -> DetectionDatasetEntry:
         if image_id is None:
             image_id = image_path.stem
         width_px, height_px = imagesize.get(image_path)
