@@ -230,7 +230,7 @@ def direct_linear_transform(hxys_target: np.ndarray, hxys_source: np.ndarray) ->
         A[2 * idx + 1, 6:9] = -x_prime * hxys_source_whitened
 
     # Solve for h vector via SVD null-space
-    _, Sigma, V = scipy.linalg.svd(A)
+    _, _, V = scipy.linalg.svd(A)
     h_vec_whitened_prime_orig = V[-1, :]
     H_whitened_prime_orig = (
         np.reshape(h_vec_whitened_prime_orig, (3, 3)) / h_vec_whitened_prime_orig[-1]
