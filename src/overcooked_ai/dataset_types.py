@@ -232,6 +232,7 @@ class DetectionDatasetEntry:
 
     @classmethod
     def from_dict(cls, entry_dict: dict) -> DetectionDatasetEntry:
+        # NOTE: dictionary entry is "H_grid_img" for backwards compatibility
         H_grid_img_vector = entry_dict.get("H_grid_img", None)
         annotations = [
             BBoxAnnotation.from_dict(annotation_dict)
@@ -291,15 +292,6 @@ class DetectionDatasetEntry:
             return dist_idx_tuples[0][1]
         else:
             return None
-
-    # def extract_bboxes(self, target_category_id: int) -> tuple[np.ndarray, list[int]]:
-    #     bboxes = []
-    #     anno_idxs = []
-    #     for anno_idx, anno in enumerate(self.annotations):
-    #         if anno.category_id == target_category_id:
-    #             bboxes.append(anno.bbox.get_bbox_xyxy())
-    #             anno_idxs.append(anno_idx)
-    #     return np.array(bboxes), anno_idxs
 
 
 @dataclasses.dataclass
