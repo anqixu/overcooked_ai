@@ -220,14 +220,14 @@ def direct_linear_transform(hxys_target: np.ndarray, hxys_source: np.ndarray) ->
     # Build A matrix
     num_correspondences = len(hxys_target_whitened)
     A = np.zeros((2 * num_correspondences, 9), dtype=np.float64)
-    for idx, (hxys_target_whitened, hxys_source_whitened) in enumerate(
+    for idx, (hxy_target_whitened, hxy_source_whitened) in enumerate(
         zip(hxys_target_whitened, hxys_source_whitened)
     ):
-        x_prime, y_prime, w_prime = hxys_target_whitened
-        A[2 * idx, 3:6] = -w_prime * hxys_source_whitened
-        A[2 * idx, 6:9] = y_prime * hxys_source_whitened
-        A[2 * idx + 1, 0:3] = w_prime * hxys_source_whitened
-        A[2 * idx + 1, 6:9] = -x_prime * hxys_source_whitened
+        x_prime, y_prime, w_prime = hxy_target_whitened
+        A[2 * idx, 3:6] = -w_prime * hxy_source_whitened
+        A[2 * idx, 6:9] = y_prime * hxy_source_whitened
+        A[2 * idx + 1, 0:3] = w_prime * hxy_source_whitened
+        A[2 * idx + 1, 6:9] = -x_prime * hxy_source_whitened
 
     # Solve for h vector via SVD null-space
     _, _, V = scipy.linalg.svd(A)
