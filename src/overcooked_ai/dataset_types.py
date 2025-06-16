@@ -1,14 +1,21 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import dataclasses
+from pathlib import Path
+from typing import Any
 
 import imagesize
 import json
-import numpy as np
 
-from detectron2.structures.boxes import BoxMode
+try:
+    from detectron2.structures.boxes import BoxMode
+except ImportError:
+    from enum import IntEnum
+
+    class BoxMode(IntEnum):
+        """Substitute for detectron2's BoxMode enum."""
+
+        XYXY_ABS = 0
 
 
 @dataclasses.dataclass
@@ -120,9 +127,21 @@ class BBoxAnnotation:
     # ID used to track object across frames
     track_id: int | None = None
 
+    # TODO: add unit tests for segmentation_rle_counts
+    # Run Length Encoding (RLE) of per-pixel segmentation
+    segmentation_rle_counts: str | None = None
+
     @classmethod
-    def from_dict(cls, data_dict: dict) -> BBoxAnnotation:
-        """Parse from structure adhering to detectron2's format."""
+    def from_dict(
+        cls, data_dict: dict, image_width: int | None = None, image_height: int | None = None
+    ) -> BBoxAnnotation:
+        """Parse from structure adhering to detectron2's format.
+
+        Args:
+            data_dict: Dictionary adhering to detectron2's format.
+            image_width: Expected width of image. Only needed if "segmentation" is present in data_dict.
+            image_height: Expected height of image. Only needed if "segmentation" is present in data_dict.
+        """
 
         assert data_dict["bbox_mode"] == int(
             BoxMode.XYXY_ABS
@@ -148,18 +167,37 @@ class BBoxAnnotation:
         track_id = data_dict.get("track_id", None)
         track_id = int(track_id) if track_id is not None else None
 
+        segmentation_rle_counts = None
+        if "segmentation" in data_dict:
+            segmentation_dict = data_dict["segmentation"]
+            assert "counts" in segmentation_dict
+            segmentation_rle_counts = segmentation_dict.get("counts")
+
+            segm_image_height, segm_image_width = segmentation_dict["size"]
+            assert image_width == segm_image_width and image_height == segm_image_height
+
         return cls(
-            BBox(x_min_px, y_min_px, x_max_px, y_max_px),
-            category_id,
-            grid_row_idx,
-            grid_col_idx,
-            score,
-            class_probs,
-            track_id,
+            bbox=BBox(x_min_px, y_min_px, x_max_px, y_max_px),
+            category_id=category_id,
+            grid_row_idx=grid_row_idx,
+            grid_col_idx=grid_col_idx,
+            score=score,
+            class_probs=class_probs,
+            track_id=track_id,
+            segmentation_rle_counts=segmentation_rle_counts,
         )
 
-    def to_dict(self) -> dict[str, int | list[float] | float]:
-        data_dict: dict[str, int | list[float] | float] = {
+    def to_dict(
+        self, image_width: int | None = None, image_height: int | None = None
+    ) -> dict[str, Any]:
+        """Serialize to dictionary structure adhering to detectron2's format.
+
+        Args:
+            image_width: Expected width of image. Only needed if segmentation_rle_counts is present.
+            image_height: Expected height of image. Only needed if segmentation_rle_counts is present.
+        """
+
+        data_dict: dict[str, Any] = {
             "bbox": [
                 self.bbox.x_min_px,
                 self.bbox.y_min_px,
@@ -178,6 +216,11 @@ class BBoxAnnotation:
             data_dict["class_probs"] = self.class_probs
         if self.track_id is not None:
             data_dict["track_id"] = self.track_id
+        if self.segmentation_rle_counts is not None:
+            data_dict["segmentation"] = {
+                "counts": self.segmentation_rle_counts,
+                "size": (image_height, image_width),
+            }
         return data_dict
 
     def get_xycat(self) -> tuple[float, float, int]:
@@ -211,6 +254,9 @@ class BBoxAnnotation:
             fields["class_probs"] = "[" + ",".join(f"{p:.1e}" for p in self.class_probs) + "]"
         if self.track_id is not None:
             fields["track_id"] = f"{self.track_id}"
+        if self.segmentation_rle_counts is not None:
+            fields["len(segm)"] = str(len(self.segmentation_rle_counts))
+
         repr = ", ".join(f"{k}={v}" for k, v in fields.items())
         return f"BBoxAnnotation[{repr}]"
 
@@ -234,15 +280,19 @@ class DetectionDatasetEntry:
     def from_dict(cls, entry_dict: dict) -> DetectionDatasetEntry:
         # NOTE: dictionary entry is "H_grid_img" for backwards compatibility
         H_grid_img_vector = entry_dict.get("H_grid_img", None)
+
+        image_width = int(entry_dict["width"])
+        image_height = int(entry_dict["height"])
+
         annotations = [
-            BBoxAnnotation.from_dict(annotation_dict)
+            BBoxAnnotation.from_dict(annotation_dict, image_width, image_height)
             for annotation_dict in entry_dict["annotations"]
         ]
 
         obj = cls(
             file_name=str(entry_dict["file_name"]),
-            height=int(entry_dict["height"]),
-            width=int(entry_dict["width"]),
+            height=image_height,
+            width=image_width,
             image_id=str(entry_dict["image_id"]),
             annotations=annotations,
             H_grid_img_vector=H_grid_img_vector,
@@ -270,7 +320,9 @@ class DetectionDatasetEntry:
         }
         if self.H_grid_img_vector is not None:
             entry_dict["H_grid_img"] = self.H_grid_img_vector
-        entry_dict["annotations"] = [anno.to_dict() for anno in self.annotations]
+        entry_dict["annotations"] = [
+            anno.to_dict(self.width, self.height) for anno in self.annotations
+        ]
         return entry_dict
 
     def find_nearest_annotation_idx(self, target_anno: BBoxAnnotation) -> int | None:
@@ -335,21 +387,20 @@ class DetectionDataset:
         obj.tainted = True
         return obj
 
+    def to_dict(self) -> dict[str, Any]:
+        for entry in self.entries:
+            entry.annotations.sort(key=BBoxAnnotation.sort_key)
+
+        return {
+            "metadata": {"thing_classes": self.thing_classes},
+            "dataset_dict": [entry.to_dict() for entry in self.entries],
+        }
+
     def save_to_json(self, dest_path: Path | None = None) -> None:
         if dest_path is not None:
             self.dataset_path = dest_path
 
-        for entry in self.entries:
-            entry.annotations.sort(key=BBoxAnnotation.sort_key)
-
         with open(self.dataset_path, "w") as fh:
-            json.dump(
-                {
-                    "metadata": {"thing_classes": self.thing_classes},
-                    "dataset_dict": [entry.to_dict() for entry in self.entries],
-                },
-                fh,
-                indent=2,
-            )
+            json.dump(self.to_dict(), fh, indent=2)
 
         self.tainted = False
